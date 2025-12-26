@@ -1,0 +1,78 @@
+# GitHub 每日自动提交工作流
+# 功能：每天自动提交一次，保持GitHub贡献图的绿色
+# 配置：请修改项目根目录下的 config.yml 文件
+
+name: Daily Auto Commit
+
+on:
+  # 每天 UTC 时间 00:00 运行 (北京时间 08:00)
+  schedule:
+    - cron: '0 0 * * *'
+  # 支持手动触发（用于测试）
+  workflow_dispatch:
+
+jobs:
+  auto-commit:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 步骤1: 检出仓库代码
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      # 步骤2: 从配置文件读取并配置Git用户信息
+      - name: Configure Git User
+        run: |
+          # 安装 yq 用于解析 YAML 配置文件
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          
+          # 从 config.yml 读取用户配置
+          USER_NAME=$(yq '.git.user_name' config.yml)
+          USER_EMAIL=$(yq '.git.user_email' config.yml)
+          
+          # 配置 Git
+          git config user.name "$USER_NAME"
+          git config user.email "$USER_EMAIL"
+          
+          echo "✅ Git 配置完成"
+          echo "   用户名: $USER_NAME"
+          echo "   邮箱: $USER_EMAIL"
+      
+      # 步骤3: 生成提交内容
+      - name: Generate Commit Content
+        run: |
+          # 获取当前时间（北京时间）
+          TIMESTAMP=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
+          DATE=$(TZ='Asia/Shanghai' date '+%Y-%m-%d')
+          
+          # 创建或更新日志文件
+          echo "## 📅 $TIMESTAMP" >> logs/daily-log.md
+          echo "" >> logs/daily-log.md
+          echo "- ✅ 自动提交成功" >> logs/daily-log.md
+          echo "- 🤖 由 GitHub Actions 自动执行" >> logs/daily-log.md
+          echo "" >> logs/daily-log.md
+          echo "---" >> logs/daily-log.md
+          echo "" >> logs/daily-log.md
+          
+          # 更新最后提交时间戳
+          echo "$TIMESTAMP" > logs/last-commit.txt
+          
+          echo "✅ 日志内容已生成"
+      
+      # 步骤4: 提交并推送
+      - name: Commit and Push
+        run: |
+          git add -A
+          
+          # 检查是否有变更需要提交
+          if git diff --staged --quiet; then
+            echo "⚠️ 没有检测到变更，跳过提交"
+          else
+            TIMESTAMP=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
+            git commit -m "🤖 Daily auto commit - $TIMESTAMP"
+            git push
+            echo "✅ 提交并推送成功！"
+          fi
